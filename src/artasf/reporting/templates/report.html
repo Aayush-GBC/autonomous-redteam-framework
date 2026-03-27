@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>ARTASF Report — {{ session.name }}</title>
+  <style>{{ styles }}</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── Cover ──────────────────────────────────────────────── -->
+  <div class="cover">
+    <h1>Red Team Assessment Report</h1>
+    <div class="subtitle">Autonomous Red Team Assessment Framework (ARTASF)</div>
+    <div class="meta">
+      <span>Engagement<strong>{{ session.name }}</strong></span>
+      <span>Target Network<strong>{{ session.target_network }}</strong></span>
+      <span>Started<strong>{{ session.started_at | datefmt }}</strong></span>
+      <span>Finished<strong>{{ session.ended_at | datefmt if session.ended_at else "In Progress" }}</strong></span>
+      <span>Status<strong>{{ session.status.value | upper }}</strong></span>
+    </div>
+  </div>
+
+  <!-- ── Executive Summary ──────────────────────────────────── -->
+  <h2>Executive Summary</h2>
+  <div class="summary-grid">
+    <div class="card">
+      <div class="number">{{ session.targets | length }}</div>
+      <div class="label">Hosts Found</div>
+    </div>
+    <div class="card">
+      <div class="number">{{ session.vulns | length }}</div>
+      <div class="label">Vulnerabilities</div>
+    </div>
+    <div class="card critical">
+      <div class="number">{{ vuln_counts.critical }}</div>
+      <div class="label">Critical</div>
+    </div>
+    <div class="card high">
+      <div class="number">{{ vuln_counts.high }}</div>
+      <div class="label">High</div>
+    </div>
+    <div class="card medium">
+      <div class="number">{{ vuln_counts.medium }}</div>
+      <div class="label">Medium</div>
+    </div>
+    <div class="card success">
+      <div class="number">{{ successful_exploits }}</div>
+      <div class="label">Exploits Succeeded</div>
+    </div>
+    <div class="card">
+      <div class="number">{{ session.loot | length }}</div>
+      <div class="label">Loot Items</div>
+    </div>
+  </div>
+
+  <!-- ── Targets ────────────────────────────────────────────── -->
+  <h2>Discovered Targets</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>IP Address</th>
+        <th>Hostname</th>
+        <th>OS</th>
+        <th>Open Ports</th>
+        <th>Vulns</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in session.targets %}
+      <tr>
+        <td><code>{{ t.ip }}</code></td>
+        <td>{{ t.hostname or "—" }}</td>
+        <td>{{ t.os_guess or "Unknown" }}</td>
+        <td>
+          {% for p in t.open_ports() %}
+            <code>{{ p.number }}/{{ p.service }}</code>{% if not loop.last %}, {% endif %}
+          {% endfor %}
+        </td>
+        <td>{{ target_vuln_count[t.id] | default(0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- ── Vulnerabilities ────────────────────────────────────── -->
+  <h2>Vulnerability Findings</h2>
+  {% for v in session.vulns | sort(attribute='severity.value') %}
+  <div class="vuln-card">
+    <div class="vuln-header">
+      <span class="badge {{ v.severity.value }}">{{ v.severity.value }}</span>
+      <span class="vuln-title">{{ v.title }}</span>
+    </div>
+    <div class="vuln-meta">
+      Host: <code>{{ target_ip[v.target_id] | default("unknown") }}</code>
+      {% if v.port %} · Port: <code>{{ v.port }}</code>{% endif %}
+      {% if v.cvss_score %} · CVSS: <strong>{{ "%.1f" | format(v.cvss_score) }}</strong>{% endif %}
+      {% if v.cve %} · <code>{{ v.cve }}</code>{% endif %}
+    </div>
+    <div class="vuln-desc">{{ v.description }}</div>
+    {% if v.exploit_refs %}
+    <div class="vuln-refs">
+      {% for ref in v.exploit_refs %}
+        <span class="ref-tag">{{ ref.type }}: {{ ref.value }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <!-- ── Attack Plan ────────────────────────────────────────── -->
+  {% if session.plan %}
+  <h2>AI-Generated Attack Plan</h2>
+  {% if session.plan.rationale %}
+  <p style="color:var(--muted);margin-bottom:20px;font-size:0.9em;">{{ session.plan.rationale }}</p>
+  {% endif %}
+  {% for step in session.plan.steps %}
+  <div class="step-row">
+    <div class="step-num">{{ step.step }}</div>
+    <div class="step-body">
+      <div class="step-module">{{ step.module }}</div>
+      <div class="step-rationale">{{ step.rationale }}</div>
+      {% if step.params %}
+      <div class="step-params">
+        {% for k, v in step.params.items() %}{{ k }}={{ v }}  {% endfor %}
+      </div>
+      {% endif %}
+      {% if step.requires_step %}
+      <div class="step-params" style="color:var(--medium)">requires step {{ step.requires_step }}</div>
+      {% endif %}
+    </div>
+    <span class="badge {{ step.risk_level.value }}">{{ step.risk_level.value }}</span>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ── Exploit Results ────────────────────────────────────── -->
+  {% if session.attempts %}
+  <h2>Exploitation Results</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Module</th>
+        <th>Target</th>
+        <th>Status</th>
+        <th>Session</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in session.attempts %}
+      <tr>
+        <td>{{ a.step }}</td>
+        <td><code>{{ a.module }}</code></td>
+        <td><code>{{ target_ip[a.target_id] | default("?") }}</code></td>
+        <td class="attempt-{{ a.status.value }}">{{ a.status.value | upper }}</td>
+        <td>{% if a.msf_session_id %}<code>{{ a.msf_session_id }}</code>{% else %}—{% endif %}</td>
+        <td>{% if a.duration_seconds() %}{{ "%.1f" | format(a.duration_seconds()) }}s{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <!-- ── Post-Exploitation ──────────────────────────────────── -->
+  {% if session.post_data %}
+  <h2>Post-Exploitation</h2>
+  {% for pd in session.post_data %}
+  <h3>{{ target_ip[pd.target_id] | default("Unknown Host") }}</h3>
+  <table>
+    <tbody>
+      <tr><td width="140">Hostname</td><td><code>{{ pd.hostname or "—" }}</code></td></tr>
+      <tr><td>User</td><td><code>{{ pd.whoami or "—" }}</code></td></tr>
+      <tr><td>OS</td><td>{{ pd.os_info or "—" }}</td></tr>
+      <tr><td>Interfaces</td><td>{{ pd.network_ifaces | join(", ") or "—" }}</td></tr>
+      <tr>
+        <td>Privesc</td>
+        <td>
+          {% if pd.privesc_achieved %}
+            <span class="badge critical">YES — {{ pd.privesc_method }}</span>
+          {% else %}
+            <span class="badge info">Not achieved</span>
+          {% endif %}
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ── Loot ───────────────────────────────────────────────── -->
+  {% if session.loot %}
+  <h2>Collected Loot</h2>
+  {% for item in session.loot %}
+  <div class="loot-item">
+    <span class="badge {{ 'critical' if item.type == 'credential' else 'medium' if item.type == 'hash' else 'info' }}">{{ item.type }}</span>
+    &nbsp;<code>{{ item.value if item.value | length <= 120 else item.value[:117] + "..." }}</code>
+    <div class="loot-source">Source: {{ item.source }}</div>
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <div class="footer">
+    Generated by ARTASF &nbsp;·&nbsp; {{ session.started_at | datefmt }} &nbsp;·&nbsp;
+    For authorised use in controlled lab environments only.
+  </div>
+
+</div>
+</body>
+</html>
