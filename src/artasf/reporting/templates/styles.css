@@ -1,0 +1,258 @@
+/* ARTASF Report Styles */
+
+:root {
+  --critical: #d62728;
+  --high:     #ff7f0e;
+  --medium:   #bcbd22;
+  --low:      #17becf;
+  --info:     #7f7f7f;
+  --bg:       #0d1117;
+  --surface:  #161b22;
+  --border:   #30363d;
+  --text:     #e6edf3;
+  --muted:    #8b949e;
+  --accent:   #58a6ff;
+  --success:  #3fb950;
+  --code-bg:  #1f2937;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* ── Layout ────────────────────────────────────────────────── */
+.page { max-width: 1100px; margin: 0 auto; padding: 40px 32px; }
+
+/* ── Cover ─────────────────────────────────────────────────── */
+.cover {
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 32px;
+  margin-bottom: 40px;
+}
+.cover h1 {
+  font-size: 2.2em;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.5px;
+}
+.cover .subtitle {
+  color: var(--muted);
+  font-size: 1em;
+  margin-top: 6px;
+}
+.cover .meta {
+  display: flex;
+  gap: 32px;
+  margin-top: 20px;
+  font-size: 0.85em;
+  color: var(--muted);
+}
+.cover .meta span { display: flex; flex-direction: column; }
+.cover .meta strong { color: var(--text); font-size: 1em; margin-top: 2px; }
+
+/* ── Section headers ───────────────────────────────────────── */
+h2 {
+  font-size: 1.25em;
+  font-weight: 600;
+  color: var(--accent);
+  margin: 36px 0 16px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 20px 0 8px;
+}
+
+/* ── Summary cards ─────────────────────────────────────────── */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.card .number {
+  font-size: 2.2em;
+  font-weight: 700;
+  line-height: 1;
+}
+.card .label {
+  font-size: 0.78em;
+  color: var(--muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.card.critical .number { color: var(--critical); }
+.card.high     .number { color: var(--high); }
+.card.medium   .number { color: var(--medium); }
+.card.low      .number { color: var(--low); }
+.card.info     .number { color: var(--info); }
+.card.success  .number { color: var(--success); }
+
+/* ── Severity badges ───────────────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-size: 0.78em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.badge.critical { background: var(--critical); color: #fff; }
+.badge.high     { background: var(--high);     color: #000; }
+.badge.medium   { background: var(--medium);   color: #000; }
+.badge.low      { background: var(--low);      color: #000; }
+.badge.info     { background: var(--info);     color: #fff; }
+
+/* ── Tables ────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 24px;
+  font-size: 0.88em;
+}
+th {
+  background: var(--surface);
+  color: var(--muted);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 500;
+  font-size: 0.82em;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(255,255,255,0.02); }
+
+/* ── Vuln cards ────────────────────────────────────────────── */
+.vuln-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+.vuln-card .vuln-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.vuln-card .vuln-title { font-weight: 600; font-size: 1em; }
+.vuln-card .vuln-meta  { color: var(--muted); font-size: 0.82em; margin-bottom: 8px; }
+.vuln-card .vuln-desc  { color: var(--muted); font-size: 0.88em; line-height: 1.5; }
+.vuln-card .vuln-refs  { margin-top: 10px; font-size: 0.82em; }
+.vuln-card .ref-tag {
+  display: inline-block;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  margin: 2px 2px 0 0;
+  font-family: monospace;
+  color: var(--accent);
+}
+
+/* ── Attack plan ───────────────────────────────────────────── */
+.step-row { display: flex; gap: 16px; margin-bottom: 12px; align-items: flex-start; }
+.step-num {
+  background: var(--accent);
+  color: var(--bg);
+  border-radius: 50%;
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: 0.85em;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.step-body { flex: 1; }
+.step-module {
+  font-family: monospace;
+  font-size: 0.88em;
+  color: var(--success);
+}
+.step-rationale { color: var(--muted); font-size: 0.85em; margin-top: 2px; }
+.step-params {
+  font-family: monospace;
+  font-size: 0.82em;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ── Exploit attempts ──────────────────────────────────────── */
+.attempt-success { color: var(--success); }
+.attempt-failed  { color: var(--critical); }
+.attempt-skipped { color: var(--muted); }
+
+/* ── Code / output blocks ──────────────────────────────────── */
+pre, code {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.85em;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 16px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  margin-top: 8px;
+}
+
+/* ── Loot ──────────────────────────────────────────────────── */
+.loot-item {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-family: monospace;
+  font-size: 0.85em;
+}
+.loot-item .loot-source { color: var(--muted); font-size: 0.82em; margin-top: 2px; }
+
+/* ── Footer ─────────────────────────────────────────────────── */
+.footer {
+  margin-top: 48px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.78em;
+  text-align: center;
+}
+
+/* ── Print / PDF overrides ──────────────────────────────────── */
+@page { margin: 20mm 15mm; }
+@media print {
+  body { background: #fff; color: #000; }
+  :root {
+    --bg: #fff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #636c76; --accent: #0969da;
+    --code-bg: #f6f8fa;
+  }
+}
