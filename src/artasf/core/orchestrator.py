@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import signal
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -80,7 +80,7 @@ class Orchestrator:
     async def __aexit__(self, *_: object) -> None:
         if self.session.status == SessionStatus.ACTIVE:
             self.session.status = SessionStatus.ABORTED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
 
     # ------------------------------------------------------------------
     # Top-level run
@@ -104,7 +104,7 @@ class Orchestrator:
             self.sm.advance(WorkflowPhase.DONE)
             self.session.phase = WorkflowPhase.DONE
             self.session.status = SessionStatus.COMPLETED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
             logger.success("Engagement complete: session={}", self.session.id)
 
         except EngagementAborted:
@@ -112,14 +112,14 @@ class Orchestrator:
             self.sm.fail("user abort")
             self.session.phase = WorkflowPhase.FAILED
             self.session.status = SessionStatus.ABORTED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
 
         except Exception as exc:
             logger.exception("Unhandled error in pipeline: {}", exc)
             self.sm.fail(str(exc))
             self.session.phase = WorkflowPhase.FAILED
             self.session.status = SessionStatus.FAILED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
 
         return self.session
 
@@ -228,21 +228,24 @@ class Orchestrator:
         from artasf.post.enum import PostEnumerator
         from artasf.post.privesc import PrivescHandler
         from artasf.post.loot import LootCollector
+        from artasf.exploit.msf_rpc import MSFClient
 
-        for attempt in self.session.successful_attempts():
-            if attempt.msf_session_id is None:
-                continue
-            sid = attempt.msf_session_id
-            enum = PostEnumerator(sid, self.session)
-            post_data = await enum.collect()
-            self.session.post_data.append(post_data)
+        async with MSFClient.connect() as msf:
+            for attempt in self.session.successful_attempts():
+                if attempt.msf_session_id is None:
+                    continue
+                sid = attempt.msf_session_id
 
-            priv = PrivescHandler(sid, self.session)
-            await priv.attempt()
+                enum = PostEnumerator(sid, self.session, msf)
+                post_data = await enum.collect(msf)
+                self.session.post_data.append(post_data)
 
-            loot = LootCollector(sid, self.session)
-            items = await loot.collect()
-            self.session.loot.extend(items)
+                priv = PrivescHandler(sid, self.session, msf)
+                await priv.attempt(post_data, msf)
+
+                loot = LootCollector(sid, self.session, msf)
+                items = await loot.collect(post_data, msf)
+                self.session.loot.extend(items)
 
         logger.info(
             "Post-exploitation complete: {} loot items collected",

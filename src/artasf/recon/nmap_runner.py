@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import shutil
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from loguru import logger
@@ -55,7 +55,7 @@ class NmapRunner:
             )
 
         self.out_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         xml_path  = self.out_dir / f"scan_{timestamp}.xml"
 
         cmd = ["nmap"] + self.flags.split() + ["-oX", str(xml_path), self.target]

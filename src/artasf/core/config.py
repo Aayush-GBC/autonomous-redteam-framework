@@ -58,7 +58,7 @@ class ARTASFSettings(BaseSettings):
     # When True, recon and planning run but no exploits are launched
     dry_run:              bool  = Field(default=False)
     # Nmap flags passed verbatim (in addition to -oX)
-    nmap_flags:           str   = Field(default="-sV -sC -O --open -T4")
+    nmap_flags:           str   = Field(default="-sV -sC --open -T4")
 
     # ------------------------------------------------------------------
     # Paths

@@ -1,0 +1,22 @@
+{
+  "pythonVersion": "3.14",
+  "pythonPlatform": "Windows",
+  "pythonPath": "C:/Python314/python.exe",
+  "venvPath": "C:/Python314",
+  "extraPaths": [
+    "src"
+  ],
+  "include": [
+    "src",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/*.pyc",
+    "artifacts",
+    "Ubuntu Server",
+    "VM attacker"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingModuleSource": "none"
+}
