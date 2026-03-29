@@ -119,14 +119,20 @@ Guidelines:
 - Be specific with Metasploit params: always set RHOSTS, RPORT, and any \
   payload options (e.g. LHOST, LPORT for reverse shells).
 - For LHOST always use {lhost}.
-- For web attacks and recon on DVWA, use ONLY these custom/ handlers \
+- For web attacks on DVWA, use ONLY these custom/ handlers \
   (they are implemented in the framework — do not invent others): \
-  custom/sqli, custom/xss, custom/http_put_upload, custom/cmd_inject. \
-  Do NOT use auxiliary/scanner/http/* modules for web recon — they are \
-  unreliable and often not present.
-- The only Metasploit modules you may use are: exploit/multi/handler, \
-  and any exploit/* or auxiliary/scanner/portscan/* module you are \
-  certain exists. When in doubt, use a custom/ handler instead.
+  custom/sqli, custom/xss, custom/file_upload, custom/cmd_inject. \
+  Do NOT use any auxiliary/scanner/http/* modules — they are \
+  unreliable and often absent from MSF installations.
+- Primary DVWA kill-chain: custom/file_upload (uploads shell.php to \
+  /dvwa/hackable/uploads/) → custom/cmd_inject (executes commands via \
+  the shell; set TARGETURI=/dvwa/hackable/uploads/shell.php). \
+  Do NOT chain file_upload as a hard requires_step dependency for \
+  cmd_inject — set requires_step only if cmd_inject truly cannot run \
+  without it.
+- The only Metasploit modules you may use are exploit/multi/handler \
+  (for catching reverse shells) and exploit/* modules you are \
+  certain exist. When in doubt, use a custom/ handler instead.
 - Keep rationale concise but actionable — the operator will read it.
 - Do not include steps for vulnerabilities that have no realistic exploit \
   path (e.g. info-disclosure-only entries with no follow-on action).
