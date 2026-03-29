@@ -49,6 +49,8 @@ class ARTASFSettings(BaseSettings):
         description="CIDR range to scan (host-only lab network)",
     )
     engagement_name: str = Field(default="lab-engagement")
+    # Attacker IP used as LHOST for reverse shells
+    lhost: str = Field(default="", description="Attacker machine IP (reverse shell callback)")
 
     # ------------------------------------------------------------------
     # Behaviour limits
