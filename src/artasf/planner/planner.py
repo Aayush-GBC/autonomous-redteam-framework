@@ -101,7 +101,9 @@ _SUBMIT_PLAN_TOOL: dict[str, Any] = {
 # System prompt
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """\
+def _build_system_prompt() -> str:
+    lhost = settings.lhost or "127.0.0.1"
+    return f"""\
 You are a senior red team operator conducting an authorised penetration test \
 against a controlled lab environment. Your task is to analyse the provided \
 reconnaissance and vulnerability data, then produce a complete, ordered \
@@ -111,14 +113,20 @@ Guidelines:
 - Order steps to maximise impact: prioritise unauthenticated RCE and \
   credential access before privilege escalation.
 - Respect dependencies: if step B requires a shell obtained in step A, \
-  set requires_step accordingly.
+  set requires_step accordingly.  Do NOT set requires_step from INFO/LOW \
+  recon steps to HIGH/CRITICAL attack steps — recon steps are best-effort \
+  and must not block the attack chain if they are unavailable.
 - Be specific with Metasploit params: always set RHOSTS, RPORT, and any \
   payload options (e.g. LHOST, LPORT for reverse shells).
-- For DVWA web attacks, use the custom/ namespace (e.g. custom/sqli, \
-  custom/file_upload, custom/cmd_inject) since they are handled by the \
-  framework's web attack modules, not Metasploit directly.
-- For LHOST use 192.168.56.1 (the VirtualBox host-only adapter IP) \
-  unless otherwise specified.
+- For LHOST always use {lhost}.
+- For web attacks and recon on DVWA, use ONLY these custom/ handlers \
+  (they are implemented in the framework — do not invent others): \
+  custom/sqli, custom/xss, custom/http_put_upload, custom/cmd_inject. \
+  Do NOT use auxiliary/scanner/http/* modules for web recon — they are \
+  unreliable and often not present.
+- The only Metasploit modules you may use are: exploit/multi/handler, \
+  and any exploit/* or auxiliary/scanner/portscan/* module you are \
+  certain exists. When in doubt, use a custom/ handler instead.
 - Keep rationale concise but actionable — the operator will read it.
 - Do not include steps for vulnerabilities that have no realistic exploit \
   path (e.g. info-disclosure-only entries with no follow-on action).
@@ -173,7 +181,7 @@ class AIPlanner:
         response = await client.messages.create(
             model=settings.claude_model,
             max_tokens=settings.planner_max_tokens,
-            system=_SYSTEM_PROMPT,
+            system=_build_system_prompt(),
             tools=[_SUBMIT_PLAN_TOOL],
             tool_choice={"type": "any"},   # force tool use
             messages=[{"role": "user", "content": user_message}],
