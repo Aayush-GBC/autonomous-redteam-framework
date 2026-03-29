@@ -49,6 +49,8 @@ class ARTASFSettings(BaseSettings):
         description="CIDR range to scan (host-only lab network)",
     )
     engagement_name: str = Field(default="lab-engagement")
+    # Attacker IP used as LHOST for reverse shells
+    lhost: str = Field(default="", description="Attacker machine IP (reverse shell callback)")
 
     # ------------------------------------------------------------------
     # Behaviour limits
@@ -58,7 +60,7 @@ class ARTASFSettings(BaseSettings):
     # When True, recon and planning run but no exploits are launched
     dry_run:              bool  = Field(default=False)
     # Nmap flags passed verbatim (in addition to -oX)
-    nmap_flags:           str   = Field(default="-sV -sC -O --open -T4")
+    nmap_flags:           str   = Field(default="-sV -sC --open -T4")
 
     # ------------------------------------------------------------------
     # Paths

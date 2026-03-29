@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import signal
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -80,7 +80,7 @@ class Orchestrator:
     async def __aexit__(self, *_: object) -> None:
         if self.session.status == SessionStatus.ACTIVE:
             self.session.status = SessionStatus.ABORTED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
 
     # ------------------------------------------------------------------
     # Top-level run
@@ -104,7 +104,7 @@ class Orchestrator:
             self.sm.advance(WorkflowPhase.DONE)
             self.session.phase = WorkflowPhase.DONE
             self.session.status = SessionStatus.COMPLETED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
             logger.success("Engagement complete: session={}", self.session.id)
 
         except EngagementAborted:
@@ -112,14 +112,14 @@ class Orchestrator:
             self.sm.fail("user abort")
             self.session.phase = WorkflowPhase.FAILED
             self.session.status = SessionStatus.ABORTED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
 
         except Exception as exc:
             logger.exception("Unhandled error in pipeline: {}", exc)
             self.sm.fail(str(exc))
             self.session.phase = WorkflowPhase.FAILED
             self.session.status = SessionStatus.FAILED
-            self.session.ended_at = datetime.utcnow()
+            self.session.ended_at = datetime.now(timezone.utc)
 
         return self.session
 
@@ -143,6 +143,11 @@ class Orchestrator:
         runner = NmapRunner(settings.target_network, flags=settings.nmap_flags)
         xml_path = await runner.run()
         targets = parse_nmap_xml(xml_path)
+
+        # Fallback: if nmap found nothing and target is a specific IP, probe
+        # port 80 directly and add a minimal host entry so the pipeline continues
+        if not targets and "/" not in settings.target_network:
+            targets = await _tcp_fallback(settings.target_network)
 
         for target in targets:
             await enrich_http_ports(target)
@@ -228,21 +233,24 @@ class Orchestrator:
         from artasf.post.enum import PostEnumerator
         from artasf.post.privesc import PrivescHandler
         from artasf.post.loot import LootCollector
+        from artasf.exploit.msf_rpc import MSFClient
 
-        for attempt in self.session.successful_attempts():
-            if attempt.msf_session_id is None:
-                continue
-            sid = attempt.msf_session_id
-            enum = PostEnumerator(sid, self.session)
-            post_data = await enum.collect()
-            self.session.post_data.append(post_data)
+        async with MSFClient.connect() as msf:
+            for attempt in self.session.successful_attempts():
+                if attempt.msf_session_id is None:
+                    continue
+                sid = attempt.msf_session_id
 
-            priv = PrivescHandler(sid, self.session)
-            await priv.attempt()
+                enum = PostEnumerator(sid, self.session, msf)
+                post_data = await enum.collect(msf)
+                self.session.post_data.append(post_data)
 
-            loot = LootCollector(sid, self.session)
-            items = await loot.collect()
-            self.session.loot.extend(items)
+                priv = PrivescHandler(sid, self.session, msf)
+                await priv.attempt(post_data, msf)
+
+                loot = LootCollector(sid, self.session, msf)
+                items = await loot.collect(post_data, msf)
+                self.session.loot.extend(items)
 
         logger.info(
             "Post-exploitation complete: {} loot items collected",
@@ -290,3 +298,50 @@ class Orchestrator:
             except (NotImplementedError, RuntimeError):
                 # Windows: add_signal_handler not supported on ProactorEventLoop
                 signal.signal(sig, _signal_cb)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _tcp_fallback(ip: str, ports: list[int] | None = None) -> "list":
+    """
+    If nmap returns no hosts for a specific IP, try opening TCP connections
+    directly.  Returns a list containing one minimal Target if any port is
+    reachable, or an empty list.
+    """
+    from artasf.core.models import Target, Port, PortState
+
+    check_ports = ports or [80, 443, 8080, 8443]
+    open_ports: list[Port] = []
+
+    for port in check_ports:
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port), timeout=3.0
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            service = {80: "http", 443: "https", 8080: "http", 8443: "https"}.get(port, "unknown")
+            open_ports.append(Port(number=port, service=service, state=PortState.OPEN))
+            logger.info("TCP fallback: {}:{} is open ({})", ip, port, service)
+        except Exception:
+            pass
+
+    if open_ports:
+        logger.warning(
+            "nmap found no hosts but TCP fallback found {} open port(s) on {} — "
+            "adding host manually (check nmap permissions / VM network)",
+            len(open_ports), ip,
+        )
+        return [Target(ip=ip, ports=open_ports)]
+
+    logger.error(
+        "TCP fallback also failed — {} appears unreachable. "
+        "Check that the target VM is running and the network adapter is up.",
+        ip,
+    )
+    return []

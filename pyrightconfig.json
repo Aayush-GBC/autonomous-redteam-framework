@@ -1,0 +1,22 @@
+{
+  "pythonVersion": "3.14",
+  "pythonPlatform": "Windows",
+  "extraPaths": [
+    "src",
+    "C:/Users/aayus/AppData/Roaming/Python/Python314/site-packages",
+    "C:/Python314/Lib/site-packages"
+  ],
+  "include": [
+    "src",
+    "tests"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/*.pyc",
+    "artifacts",
+    "Ubuntu Server",
+    "VM attacker"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingModuleSource": "none"
+}

@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment
+.env
+
+# IDE / tooling
+.vscode/settings.json
+pyrightconfig.json
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Engagement artifacts (runtime-generated)
+artifacts/logs/
+artifacts/scans/
+artifacts/sessions/
+artifacts/loot/
+
+# VM / lab configs (local only)
+Ubuntu Server/
+VM attacker/
+
+# Claude AI agent context
+.claude/
