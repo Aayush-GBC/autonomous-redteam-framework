@@ -144,6 +144,11 @@ class Orchestrator:
         xml_path = await runner.run()
         targets = parse_nmap_xml(xml_path)
 
+        # Fallback: if nmap found nothing and target is a specific IP, probe
+        # port 80 directly and add a minimal host entry so the pipeline continues
+        if not targets and "/" not in settings.target_network:
+            targets = await _tcp_fallback(settings.target_network)
+
         for target in targets:
             await enrich_http_ports(target)
 
@@ -293,3 +298,50 @@ class Orchestrator:
             except (NotImplementedError, RuntimeError):
                 # Windows: add_signal_handler not supported on ProactorEventLoop
                 signal.signal(sig, _signal_cb)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _tcp_fallback(ip: str, ports: list[int] | None = None) -> "list":
+    """
+    If nmap returns no hosts for a specific IP, try opening TCP connections
+    directly.  Returns a list containing one minimal Target if any port is
+    reachable, or an empty list.
+    """
+    from artasf.core.models import Target, Port, PortState
+
+    check_ports = ports or [80, 443, 8080, 8443]
+    open_ports: list[Port] = []
+
+    for port in check_ports:
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(ip, port), timeout=3.0
+            )
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
+            service = {80: "http", 443: "https", 8080: "http", 8443: "https"}.get(port, "unknown")
+            open_ports.append(Port(number=port, service=service, state=PortState.OPEN))
+            logger.info("TCP fallback: {}:{} is open ({})", ip, port, service)
+        except Exception:
+            pass
+
+    if open_ports:
+        logger.warning(
+            "nmap found no hosts but TCP fallback found {} open port(s) on {} — "
+            "adding host manually (check nmap permissions / VM network)",
+            len(open_ports), ip,
+        )
+        return [Target(ip=ip, ports=open_ports)]
+
+    logger.error(
+        "TCP fallback also failed — {} appears unreachable. "
+        "Check that the target VM is running and the network adapter is up.",
+        ip,
+    )
+    return []
