@@ -29,6 +29,7 @@ artifacts/logs/
 artifacts/scans/
 artifacts/sessions/
 artifacts/loot/
+artifacts/reports/
 
 # VM / lab configs (local only)
 Ubuntu Server/
