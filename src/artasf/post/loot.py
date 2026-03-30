@@ -278,8 +278,9 @@ class LootCollector:
 def _parse_php_credentials(php: str) -> list[tuple[str, str]]:
     """Extract $_DVWA['db_user'] / $_DVWA['db_password'] pairs from PHP config."""
     pairs: list[tuple[str, str]] = []
-    user_m = re.search(r"\[.db_user.\]\s*=\s*['\"]([^'\"]+)['\"]", php)
-    pass_m = re.search(r"\[.db_password.\]\s*=\s*['\"]([^'\"]*)['\"]", php)
+    # Matches both $_DVWA['db_user'] and $_DVWA[ 'db_user' ] (DVWA uses spaces)
+    user_m = re.search(r"\[\s*['\"]?db_user['\"]?\s*\]\s*=\s*['\"]([^'\"]+)['\"]", php)
+    pass_m = re.search(r"\[\s*['\"]?db_password['\"]?\s*\]\s*=\s*['\"]([^'\"]*)['\"]", php)
     if user_m and pass_m:
         pairs.append((user_m.group(1), pass_m.group(1)))
     return pairs
