@@ -233,23 +233,43 @@ class Orchestrator:
         from artasf.post.enum import PostEnumerator
         from artasf.post.privesc import PrivescHandler
         from artasf.post.loot import LootCollector
+        from artasf.post.webshell import WebShellPostExploit
         from artasf.exploit.msf_rpc import MSFClient
 
-        async with MSFClient.connect() as msf:
-            for attempt in self.session.successful_attempts():
-                if attempt.msf_session_id is None:
-                    continue
-                sid = attempt.msf_session_id
+        # Partition successful attempts by access type
+        msf_attempts = [
+            a for a in self.session.successful_attempts()
+            if a.msf_session_id is not None
+        ]
+        webshell_attempts = [
+            a for a in self.session.successful_attempts()
+            if a.msf_session_id is None and "cmd_inject" in a.module
+        ]
 
-                enum = PostEnumerator(sid, self.session, msf)
-                post_data = await enum.collect(msf)
+        # ── MSF session post-exploit ──────────────────────────────────────
+        if msf_attempts:
+            async with MSFClient.connect() as msf:
+                for attempt in msf_attempts:
+                    sid = attempt.msf_session_id
+
+                    enum = PostEnumerator(sid, self.session, msf)
+                    post_data = await enum.collect(msf)
+                    self.session.post_data.append(post_data)
+
+                    priv = PrivescHandler(sid, self.session, msf)
+                    await priv.attempt(post_data, msf)
+
+                    loot = LootCollector(sid, self.session, msf)
+                    items = await loot.collect(post_data, msf)
+                    self.session.loot.extend(items)
+
+        # ── Web-shell post-exploit ────────────────────────────────────────
+        if webshell_attempts:
+            ws_handler = WebShellPostExploit(self.session)
+            for attempt in webshell_attempts:
+                target_ip = _get_target_ip(self.session, attempt.target_id)
+                post_data, items = await ws_handler.collect(attempt, target_ip)
                 self.session.post_data.append(post_data)
-
-                priv = PrivescHandler(sid, self.session, msf)
-                await priv.attempt(post_data, msf)
-
-                loot = LootCollector(sid, self.session, msf)
-                items = await loot.collect(post_data, msf)
                 self.session.loot.extend(items)
 
         logger.info(
@@ -303,6 +323,17 @@ class Orchestrator:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _get_target_ip(session: "EngagementSession", target_id: str) -> str:
+    """Resolve the IP for *target_id*, falling back to the first known target."""
+    from artasf.core.models import EngagementSession as _ES  # noqa: F401
+    for t in session.targets:
+        if t.id == target_id or t.id.startswith(target_id):
+            return t.ip
+    if len(session.targets) == 1:
+        return session.targets[0].ip
+    return "127.0.0.1"
+
 
 async def _tcp_fallback(ip: str, ports: list[int] | None = None) -> "list":
     """

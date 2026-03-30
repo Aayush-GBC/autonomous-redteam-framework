@@ -194,7 +194,7 @@ class LootItem(BaseModel):
 
 class PostExploitData(BaseModel):
     target_id:        str
-    msf_session_id:   int
+    msf_session_id:   int | None = None   # None for web-shell sessions
     hostname:         str | None = None
     whoami:           str | None = None
     os_info:          str | None = None
