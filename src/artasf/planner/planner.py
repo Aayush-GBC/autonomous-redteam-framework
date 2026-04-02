@@ -21,6 +21,7 @@ from loguru import logger
 
 from artasf.core.config import settings
 from artasf.core.exceptions import AIResponseError, ConfigError, PlannerError
+from artasf.utils.retry import async_retry
 from artasf.core.models import AttackPlan, AttackStep, EngagementSession, Severity
 from artasf.planner.plan_types import PlannerContext, VulnSummary
 from artasf.planner.ranking import build_context
@@ -178,6 +179,7 @@ class AIPlanner:
 
         return plan
 
+    @async_retry(max_attempts=3, backoff_base=2.0, exceptions=(anthropic.APIStatusError, anthropic.APIConnectionError))
     async def _call_claude(self, user_message: str) -> dict[str, Any]:
         """Call Claude and return the tool input dict."""
         client = self._client or anthropic.AsyncAnthropic(

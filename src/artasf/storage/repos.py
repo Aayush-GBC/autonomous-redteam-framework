@@ -81,11 +81,12 @@ class SessionRepository:
 
     async def delete(self, session_id: str) -> None:
         """Remove a session and all associated rows."""
-        for table in ("loot", "exploit_attempts", "vulns", "targets", "sessions"):
+        for table in ("loot", "exploit_attempts", "vulns", "targets"):
             await self._db.execute(
                 f"DELETE FROM {table} WHERE session_id = ?",  # noqa: S608
                 (session_id,),
             )
+        await self._db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
         logger.info("Session {} deleted from DB", session_id[:8])
 
 

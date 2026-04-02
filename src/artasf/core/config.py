@@ -61,6 +61,8 @@ class ARTASFSettings(BaseSettings):
     dry_run:              bool  = Field(default=False)
     # Nmap flags passed verbatim (in addition to -oX)
     nmap_flags:           str   = Field(default="-sV -sC --open -T4")
+    # Maximum seconds nmap may run before the scan is killed
+    nmap_timeout_sec:     int   = Field(default=300)
 
     # ------------------------------------------------------------------
     # Paths

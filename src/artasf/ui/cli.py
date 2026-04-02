@@ -205,6 +205,57 @@ def report(
 
 
 # ---------------------------------------------------------------------------
+# artasf sessions
+# ---------------------------------------------------------------------------
+
+@app.command()
+def sessions(
+    limit: int = typer.Option(20, "--limit", "-n", help="Max sessions to show."),
+) -> None:
+    """List all saved engagement sessions from the database."""
+    from artasf.storage.db import Database
+    from artasf.storage.repos import SessionRepository
+    from rich.table import Table
+
+    async def _run() -> None:
+        async with Database(settings.db_path) as db:
+            repo = SessionRepository(db)
+            all_sessions = await repo.list_all()
+
+        if not all_sessions:
+            console.print("[yellow]No sessions found in the database.[/yellow]")
+            return
+
+        table = Table(title="Saved Sessions", show_lines=True)
+        table.add_column("ID (short)", style="dim", width=10)
+        table.add_column("Name", style="cyan")
+        table.add_column("Network")
+        table.add_column("Phase")
+        table.add_column("Status")
+        table.add_column("Started")
+
+        for s in all_sessions[:limit]:
+            status_color = {
+                "completed": "green",
+                "active": "yellow",
+                "failed": "red",
+                "aborted": "orange3",
+            }.get(s.status.value, "white")
+            table.add_row(
+                s.id[:8],
+                s.name,
+                s.target_network,
+                s.phase.value,
+                f"[{status_color}]{s.status.value}[/{status_color}]",
+                s.started_at.strftime("%Y-%m-%d %H:%M"),
+            )
+
+        console.print(table)
+
+    asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
 # artasf version
 # ---------------------------------------------------------------------------
 

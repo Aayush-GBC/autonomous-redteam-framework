@@ -27,6 +27,8 @@ from artasf.core.models import (
     WorkflowPhase,
 )
 from artasf.core.workflow import WorkflowStateMachine
+from artasf.storage.db import Database
+from artasf.storage.repos import LootRepository, SessionRepository, VulnRepository
 
 if TYPE_CHECKING:
     pass
@@ -45,6 +47,10 @@ class Orchestrator:
         self.session = session
         self.sm = WorkflowStateMachine(WorkflowPhase.INIT)
         self._abort_event = asyncio.Event()
+        self._db: Database | None = None
+        self._session_repo: SessionRepository | None = None
+        self._vuln_repo: VulnRepository | None = None
+        self._loot_repo: LootRepository | None = None
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -75,12 +81,26 @@ class Orchestrator:
 
     async def __aenter__(self) -> "Orchestrator":
         self._install_signal_handlers()
+        self._db = Database(settings.db_path)
+        await self._db.__aenter__()
+        self._session_repo = SessionRepository(self._db)
+        self._vuln_repo = VulnRepository(self._db)
+        self._loot_repo = LootRepository(self._db)
+        await self._session_repo.save(self.session)
         return self
 
     async def __aexit__(self, *_: object) -> None:
         if self.session.status == SessionStatus.ACTIVE:
             self.session.status = SessionStatus.ABORTED
             self.session.ended_at = datetime.now(timezone.utc)
+        if self._session_repo is not None:
+            try:
+                await self._session_repo.save(self.session)
+            except Exception as exc:
+                logger.warning("Final DB save failed: {}", exc)
+        if self._db is not None:
+            await self._db.__aexit__(None, None, None)
+            self._db = None
 
     # ------------------------------------------------------------------
     # Top-level run
@@ -98,6 +118,10 @@ class Orchestrator:
                 await self._run_post_exploit()
             else:
                 logger.warning("dry_run=True — skipping exploitation phases")
+                self.sm.advance(WorkflowPhase.EXPLOITING)
+                self.sm.advance(WorkflowPhase.POST_EXPLOIT)
+                self.sm.advance(WorkflowPhase.REPORTING)
+                self.session.phase = WorkflowPhase.REPORTING
 
             await self._run_reporting()
 
@@ -159,6 +183,7 @@ class Orchestrator:
 
         self.session.targets = targets
         logger.info("Recon complete: {} host(s) found", len(targets))
+        await self._persist()
 
     async def _run_vuln_map(self) -> None:
         self.sm.advance(WorkflowPhase.VULN_MAP)
@@ -175,6 +200,9 @@ class Orchestrator:
             self.session.vulns.extend(vulns)
 
         logger.info("Vuln map complete: {} vulnerabilities found", len(self.session.vulns))
+        if self._vuln_repo is not None:
+            await self._vuln_repo.save_all(self.session.id, self.session.vulns)
+        await self._persist()
 
     async def _run_planning(self) -> None:
         self.sm.advance(WorkflowPhase.PLANNING)
@@ -194,6 +222,7 @@ class Orchestrator:
             len(plan.steps),
             plan.model_used,
         )
+        await self._persist()
 
     async def _run_exploiting(self) -> None:
         self.sm.advance(WorkflowPhase.EXPLOITING)
@@ -213,6 +242,7 @@ class Orchestrator:
 
         successes = len(self.session.successful_attempts())
         logger.info("Exploitation complete: {}/{} steps succeeded", successes, len(self.session.plan.steps))
+        await self._persist()
 
     async def _run_post_exploit(self) -> None:
         # Only enter post-exploit if we have at least one open session
@@ -276,6 +306,9 @@ class Orchestrator:
             "Post-exploitation complete: {} loot items collected",
             len(self.session.loot),
         )
+        if self._loot_repo is not None and self.session.loot:
+            await self._loot_repo.save_all(self.session.loot)
+        await self._persist()
 
     async def _run_reporting(self) -> None:
         if self.sm.current != WorkflowPhase.REPORTING:
@@ -292,6 +325,20 @@ class Orchestrator:
         pdf_path  = await renderer.render_pdf(html_path)
 
         logger.success("Report saved: HTML={} PDF={}", html_path, pdf_path)
+        await self._persist()
+
+    # ------------------------------------------------------------------
+    # Persistence helper
+    # ------------------------------------------------------------------
+
+    async def _persist(self) -> None:
+        """Save current session state to the DB.  Silent on failure."""
+        if self._session_repo is None:
+            return
+        try:
+            await self._session_repo.save(self.session)
+        except Exception as exc:
+            logger.warning("DB persist failed (phase={}): {}", self.session.phase, exc)
 
     # ------------------------------------------------------------------
     # Helpers

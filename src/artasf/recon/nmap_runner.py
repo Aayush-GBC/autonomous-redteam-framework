@@ -66,7 +66,17 @@ class NmapRunner:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        stdout, stderr = await proc.communicate()
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=settings.nmap_timeout_sec
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            raise NmapError(
+                f"nmap timed out after {settings.nmap_timeout_sec}s — "
+                "check NMAP_TIMEOUT_SEC in .env or verify the target is reachable"
+            )
 
         if proc.returncode != 0:
             err = stderr.decode(errors="replace").strip()
