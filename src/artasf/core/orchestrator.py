@@ -28,6 +28,7 @@ from artasf.core.models import (
 )
 from artasf.core.workflow import WorkflowStateMachine
 from artasf.storage.db import Database
+from artasf.storage.file_store import FileStore
 from artasf.storage.repos import LootRepository, SessionRepository, VulnRepository
 
 if TYPE_CHECKING:
@@ -48,6 +49,7 @@ class Orchestrator:
         self.sm = WorkflowStateMachine(WorkflowPhase.INIT)
         self._abort_event = asyncio.Event()
         self._db: Database | None = None
+        self._file_store: FileStore | None = None
         self._session_repo: SessionRepository | None = None
         self._vuln_repo: VulnRepository | None = None
         self._loot_repo: LootRepository | None = None
@@ -81,6 +83,8 @@ class Orchestrator:
 
     async def __aenter__(self) -> "Orchestrator":
         self._install_signal_handlers()
+        self._file_store = FileStore(settings.artifacts_dir)
+        self._file_store.ensure_dirs()
         self._db = Database(settings.db_path)
         await self._db.__aenter__()
         self._session_repo = SessionRepository(self._db)
@@ -308,6 +312,14 @@ class Orchestrator:
         )
         if self._loot_repo is not None and self.session.loot:
             await self._loot_repo.save_all(self.session.loot)
+        if self._file_store is not None:
+            for item in self.session.loot:
+                target_ip = _get_target_ip(self.session, item.target_id)
+                self._file_store.save_loot(
+                    f"{item.type}_{item.id[:8]}.txt",
+                    item.value,
+                    target_ip=target_ip,
+                )
         await self._persist()
 
     async def _run_reporting(self) -> None:
@@ -332,13 +344,21 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     async def _persist(self) -> None:
-        """Save current session state to the DB.  Silent on failure."""
-        if self._session_repo is None:
-            return
-        try:
-            await self._session_repo.save(self.session)
-        except Exception as exc:
-            logger.warning("DB persist failed (phase={}): {}", self.session.phase, exc)
+        """Save current session state to DB and a JSON snapshot. Silent on failure."""
+        if self._session_repo is not None:
+            try:
+                await self._session_repo.save(self.session)
+            except Exception as exc:
+                logger.warning("DB persist failed (phase={}): {}", self.session.phase, exc)
+        if self._file_store is not None:
+            try:
+                self._file_store.save_session_json(
+                    self.session.id,
+                    self.session.name,
+                    self.session.model_dump_json(indent=2),
+                )
+            except Exception as exc:
+                logger.warning("FileStore persist failed: {}", exc)
 
     # ------------------------------------------------------------------
     # Helpers
