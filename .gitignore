@@ -30,6 +30,7 @@ artifacts/scans/
 artifacts/sessions/
 artifacts/loot/
 artifacts/reports/
+artifacts/*.db
 
 # VM / lab configs (local only)
 Ubuntu Server/
