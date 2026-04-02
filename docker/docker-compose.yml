@@ -1,0 +1,15 @@
+version: "3.9"
+
+services:
+  artasf:
+    build: ..
+    image: artasf:latest
+    network_mode: host          # needs host networking to reach the lab VM
+    volumes:
+      - ../artifacts:/app/artifacts   # persist scan results, reports, loot
+      - ../.env:/app/.env:ro          # inject secrets at runtime
+    environment:
+      - PYTHONUNBUFFERED=1
+    # Override the default command, e.g.:
+    #   docker compose run artasf run --target 192.168.56.0/24
+    command: ["--help"]
