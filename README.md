@@ -101,6 +101,13 @@ src/artasf/
 └── ui/            # Typer CLI, Rich console views
 ```
 
+## Author
+
+**Aayush Patel** — creator and maintainer of ARTASF.
+
+- GitHub: [@Aayush-GBC](https://github.com/Aayush-GBC)
+- Repository: [Aayush-GBC/autonomous-redteam-framework](https://github.com/Aayush-GBC/autonomous-redteam-framework)
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
