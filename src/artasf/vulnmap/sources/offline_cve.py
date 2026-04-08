@@ -28,7 +28,6 @@ CATALOG: list[KnownVuln] = [
         cvss_score=9.8,
         port_numbers=[80, 8080, 443, 8443],
         service_patterns=["http", "https"],
-        version_patterns=["Apache", "nginx", "php"],
         tags=["web", "sqli", "dvwa"],
         msf_modules=[],
         edb_ids=[],

@@ -113,27 +113,29 @@ attack plan by calling the submit_attack_plan tool.
 Guidelines:
 - Order steps to maximise impact: prioritise unauthenticated RCE and \
   credential access before privilege escalation.
-- Respect dependencies: if step B requires a shell obtained in step A, \
-  set requires_step accordingly.  Do NOT set requires_step from INFO/LOW \
-  recon steps to HIGH/CRITICAL attack steps — recon steps are best-effort \
-  and must not block the attack chain if they are unavailable.
+- Respect dependencies: if step B requires output or a shell from step A \
+  (e.g. a session ID, a credential, or an uploaded file), set \
+  requires_step to step A's number.  Do NOT set requires_step just \
+  because two steps target the same host — only set it when step B \
+  literally cannot execute without step A's artefact.  Never set \
+  requires_step from recon/info steps to attack steps.
 - Be specific with Metasploit params: always set RHOSTS, RPORT, and any \
   payload options (e.g. LHOST, LPORT for reverse shells).
 - For LHOST always use {lhost}.
 - For web attacks on DVWA, use ONLY these custom/ handlers \
   (they are implemented in the framework — do not invent others): \
   custom/sqli, custom/xss, custom/file_upload, custom/cmd_inject. \
-  Do NOT use any auxiliary/scanner/http/* modules — they are \
-  unreliable and often absent from MSF installations.
+  Do NOT use auxiliary/scanner/http/* modules — they are unreliable \
+  and frequently absent from default MSF installations.
 - Primary DVWA kill-chain: custom/file_upload (uploads shell.php to \
   /dvwa/hackable/uploads/) → custom/cmd_inject (executes commands via \
   the shell; set TARGETURI=/dvwa/hackable/uploads/shell.php). \
-  Do NOT chain file_upload as a hard requires_step dependency for \
-  cmd_inject — set requires_step only if cmd_inject truly cannot run \
-  without it.
+  Set requires_step on cmd_inject only if it needs the uploaded shell path \
+  from the file_upload step; otherwise leave it unset.
 - The only Metasploit modules you may use are exploit/multi/handler \
   (for catching reverse shells) and exploit/* modules you are \
-  certain exist. When in doubt, use a custom/ handler instead.
+  certain exist in a standard MSF installation. When in doubt, use a \
+  custom/ handler instead.
 - Keep rationale concise but actionable — the operator will read it.
 - Do not include steps for vulnerabilities that have no realistic exploit \
   path (e.g. info-disclosure-only entries with no follow-on action).

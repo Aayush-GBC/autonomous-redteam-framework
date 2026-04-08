@@ -36,7 +36,7 @@ class SessionRepository:
         self._db = db
 
     async def save(self, session: EngagementSession) -> None:
-        """Insert or replace a session record."""
+        """Insert or replace a session record and upsert all its target rows."""
         await self._db.execute(
             """
             INSERT OR REPLACE INTO sessions
@@ -54,6 +54,28 @@ class SessionRepository:
                 session.model_dump_json(),
             ),
         )
+        # Upsert target rows so that vulns FK (targets.id) is satisfied.
+        if session.targets:
+            target_data = [
+                (
+                    t.id,
+                    session.id,
+                    t.ip,
+                    t.hostname,
+                    t.os_guess,
+                    t.scanned_at.isoformat(),
+                    t.model_dump_json(),
+                )
+                for t in session.targets
+            ]
+            await self._db.executemany(
+                """
+                INSERT OR REPLACE INTO targets
+                    (id, session_id, ip, hostname, os_guess, scanned_at, json_blob)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                target_data,
+            )
         logger.debug("Session saved to DB: id={}", session.id[:8])
 
     async def load(self, session_id: str) -> EngagementSession | None:
