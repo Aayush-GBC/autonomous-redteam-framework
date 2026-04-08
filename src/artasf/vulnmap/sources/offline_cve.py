@@ -250,6 +250,7 @@ CATALOG: list[KnownVuln] = [
         msf_modules=["auxiliary/scanner/ssh/ssh_enumusers"],
         edb_ids=["45233"],
         tags=["ssh", "user-enumeration"],
+        feeds_into=["SSH-WEAK-CREDS"],
     ),
     KnownVuln(
         id="SSH-WEAK-CREDS",

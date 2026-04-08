@@ -131,9 +131,11 @@ def _matches(known: KnownVuln, port: Port, target: Target) -> bool:
 
 
 def _detect_dvwa(target: Target) -> bool:
-    """Return True if any port banner/version looks like DVWA."""
+    """Return True if any port banner/version/cpe or target hostname looks like DVWA."""
+    if target.hostname and _DVWA_FINGERPRINTS.search(target.hostname):
+        return True
     for port in target.open_ports():
-        for text in (port.banner, port.version, port.service):
+        for text in (port.banner, port.version, port.service, port.cpe):
             if text and _DVWA_FINGERPRINTS.search(text):
                 return True
     return False

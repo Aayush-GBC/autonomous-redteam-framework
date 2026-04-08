@@ -47,6 +47,9 @@ def score(known: KnownVuln, matched_port: int | None = None) -> tuple[float, Sev
     if _is_info_only(known):
         base -= 1.0
 
+    if known.feeds_into:
+        base += 0.5
+
     priority = max(0.0, min(10.0, base))
     return priority, _severity_from_score(priority)
 

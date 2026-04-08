@@ -45,3 +45,5 @@ class KnownVuln:
     needs_network:  bool = True   # requires direct TCP access
     # tags help the planner group related attacks
     tags: list[str] = field(default_factory=list)
+    # IDs of other KnownVuln entries this one helps unlock (used by scorer)
+    feeds_into: list[str] = field(default_factory=list)

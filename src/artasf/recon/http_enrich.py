@@ -92,6 +92,15 @@ async def _probe_port(
     headers = dict(resp.headers)
     title   = _extract_title(resp.text)
 
+    # Secondary probe: if the root title is empty and this is a common DVWA
+    # port, try /dvwa/ to pick up the "Login :: DVWA" title directly.
+    if not title and port in {80, 8080}:
+        try:
+            dvwa_resp = await client.get(f"{scheme}://{ip}:{port}/dvwa/")
+            title = _extract_title(dvwa_resp.text) or title
+        except Exception:
+            pass
+
     meta = HttpMeta(
         port=port,
         scheme=scheme,
