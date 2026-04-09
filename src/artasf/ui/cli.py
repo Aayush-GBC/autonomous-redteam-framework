@@ -454,13 +454,21 @@ def auth_sign(
     console.print(f"  Authorised : [cyan]{authorized_by}[/cyan]")
     console.print(f"  Expires in : [cyan]{expires_in}[/cyan]\n")
 
+    import json as _json
+    one_line = _json.dumps(_json.loads(token_json), separators=(",", ":"))
+
     if export:
-        # Collapse to single-line JSON for the env var
-        import json as _json
-        one_line = _json.dumps(_json.loads(token_json), separators=(",", ":"))
         console.print("[bold]Run this to activate the token in your shell:[/bold]\n")
         console.print(f"  [yellow]export ARTASF_AUTH_TOKEN='{one_line}'[/yellow]\n")
-    else:
+
+    # Always write a sourceable file — safer than copy-pasting from terminal
+    token_file = settings.artifacts_dir / "auth_token.env"
+    token_file.parent.mkdir(parents=True, exist_ok=True)
+    token_file.write_text(f"export ARTASF_AUTH_TOKEN='{one_line}'\n", encoding="utf-8")
+    console.print(f"  [dim]Token also saved to: {token_file}[/dim]")
+    console.print(f"  [dim]Source it with:  source {token_file}[/dim]\n")
+
+    if not export:
         console.print(token_json)
 
 

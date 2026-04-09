@@ -80,6 +80,9 @@ class AuthorizationGate:
             return  # CI / unit-test runs are exempt
 
         raw = os.environ.get("ARTASF_AUTH_TOKEN", "").strip()
+        # Strip literal control characters (newlines, tabs) that can sneak in
+        # when the pretty-printed JSON is pasted directly into a shell export.
+        raw = raw.replace("\n", "").replace("\r", "").replace("\t", "")
         if not raw:
             raise AuthorizationError(
                 "No ARTASF_AUTH_TOKEN found in environment.\n"
