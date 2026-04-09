@@ -144,7 +144,7 @@ def _mock_shell_client(get_side_effect):
     return stack, mock_client
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_webshell_session_run_returns_output() -> None:
     mock_resp = MagicMock()
     mock_resp.text = "uid=33(www-data) gid=33(www-data)\n"
@@ -163,7 +163,7 @@ async def test_webshell_session_run_returns_output() -> None:
     assert "www-data" in result
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_webshell_session_run_timeout_returns_trigger_message() -> None:
     with patch("artasf.post.webshell.httpx.Timeout", return_value=MagicMock()):
         with patch("artasf.post.webshell.httpx.AsyncClient") as mock_client_cls:
@@ -179,7 +179,7 @@ async def test_webshell_session_run_timeout_returns_trigger_message() -> None:
     assert "timeout" in result
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_webshell_session_is_alive_true() -> None:
     mock_resp = MagicMock()
     mock_resp.text = "artasf_ping"
@@ -198,7 +198,7 @@ async def test_webshell_session_is_alive_true() -> None:
     assert alive is True
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_webshell_session_is_alive_false_on_error() -> None:
     with patch("artasf.post.webshell.httpx.Timeout", return_value=MagicMock()):
         with patch("artasf.post.webshell.httpx.AsyncClient") as mock_client_cls:
@@ -253,7 +253,7 @@ def _make_run_side_effect(extra: dict[str, str] | None = None) -> AsyncMock:
     return _run
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_collect_builds_post_data(
     session: EngagementSession,
     cmd_inject_attempt: ExploitAttempt,
@@ -282,7 +282,7 @@ async def test_collect_builds_post_data(
     assert post_data.msf_session_id is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_collect_extracts_dvwa_credentials(
     session: EngagementSession,
     cmd_inject_attempt: ExploitAttempt,
@@ -308,7 +308,7 @@ async def test_collect_extracts_dvwa_credentials(
     assert any("dvwa" in i.value for i in creds), "Expected dvwa DB credential in loot"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_collect_proceeds_when_shell_ping_fails(
     session: EngagementSession,
     cmd_inject_attempt: ExploitAttempt,

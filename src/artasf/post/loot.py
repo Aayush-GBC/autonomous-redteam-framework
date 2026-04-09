@@ -39,6 +39,13 @@ _WEB_CONFIG_PATHS = [
 
 _HISTORY_FILES = ["~/.bash_history", "~/.zsh_history", "~/.ash_history"]
 
+# Module paths that produce SQLi-extracted credentials
+_SQLI_MODULES: frozenset[str] = frozenset({
+    "custom/sqli",
+    "custom/dvwa_sqli",
+    "auxiliary/scanner/http/sqli",
+})
+
 
 class LootCollector:
     """
@@ -253,7 +260,7 @@ class LootCollector:
         for attempt in self.engagement.attempts:
             if attempt.target_id != target_id:
                 continue
-            if "custom/sqli" not in attempt.module:
+            if not any(m in attempt.module for m in _SQLI_MODULES):
                 continue
             if not attempt.output:
                 continue

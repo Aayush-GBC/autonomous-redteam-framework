@@ -18,8 +18,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from artasf.core.audit import AuditLog
+from artasf.core.authorization import AuthorizationGate
 from artasf.core.config import settings
-from artasf.core.exceptions import EngagementAborted, WorkflowError
+from artasf.core.exceptions import EngagementAborted
 from artasf.core.logging import configure_logging
 from artasf.core.models import (
     EngagementSession,
@@ -53,6 +55,7 @@ class Orchestrator:
         self._session_repo: SessionRepository | None = None
         self._vuln_repo: VulnRepository | None = None
         self._loot_repo: LootRepository | None = None
+        self._audit: AuditLog | None = None
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -91,12 +94,37 @@ class Orchestrator:
         self._vuln_repo = VulnRepository(self._db)
         self._loot_repo = LootRepository(self._db)
         await self._session_repo.save(self.session)
+        # Audit log — one file per engagement session
+        self._audit = AuditLog(
+            settings.artifacts_dir / "logs" / f"audit_{self.session.id[:8]}.log"
+        )
+        self._audit.record(
+            "ENGAGEMENT_START",
+            session_id=self.session.id,
+            name=self.session.name,
+            target_network=self.session.target_network,
+        )
+        # Authorization gate — halts pipeline if no valid token is present
+        AuthorizationGate(dry_run=settings.dry_run).verify(
+            target_network=self.session.target_network,
+            engagement_name=self.session.name,
+        )
         return self
 
     async def __aexit__(self, *_: object) -> None:
         if self.session.status == SessionStatus.ACTIVE:
             self.session.status = SessionStatus.ABORTED
             self.session.ended_at = datetime.now(timezone.utc)
+        if self._audit is not None:
+            try:
+                self._audit.record(
+                    "ENGAGEMENT_END",
+                    session_id=self.session.id,
+                    status=self.session.status.value,
+                    phase=self.session.phase.value,
+                )
+            except Exception as exc:
+                logger.warning("Audit log end-record failed: {}", exc)
         if self._session_repo is not None:
             try:
                 await self._session_repo.save(self.session)
@@ -345,6 +373,19 @@ class Orchestrator:
 
     async def _persist(self) -> None:
         """Save current session state to DB and a JSON snapshot. Silent on failure."""
+        if self._audit is not None:
+            try:
+                self._audit.record(
+                    "PHASE_CHECKPOINT",
+                    phase=self.session.phase.value,
+                    status=self.session.status.value,
+                    targets=len(self.session.targets),
+                    vulns=len(self.session.vulns),
+                    attempts=len(self.session.attempts),
+                    loot=len(self.session.loot),
+                )
+            except Exception as exc:
+                logger.warning("Audit log write failed: {}", exc)
         if self._session_repo is not None:
             try:
                 await self._session_repo.save(self.session)

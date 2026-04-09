@@ -1,5 +1,7 @@
 # ARTASF — Autonomous Red Team Assessment Framework
 
+[![CI](https://github.com/Aayush-GBC/autonomous-redteam-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/Aayush-GBC/autonomous-redteam-framework/actions/workflows/ci.yml)
+
 A Python CLI tool that runs a full autonomous penetration-testing pipeline against a controlled lab target using Claude AI for attack planning.
 
 > **For authorised lab use only.** Never run against systems you do not own or have explicit written permission to test.

@@ -44,6 +44,9 @@ where = ["src"]
 [tool.setuptools.package-dir]
 "" = "src"
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.0",
