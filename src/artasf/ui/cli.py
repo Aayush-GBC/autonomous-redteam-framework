@@ -44,8 +44,10 @@ from artasf.ui.console_views import (
 app          = typer.Typer(name="artasf", help="Autonomous Red Team Assessment Framework", add_completion=False)
 sessions_app = typer.Typer(help="Manage saved engagement sessions.")
 db_app       = typer.Typer(help="Database management.")
+auth_app     = typer.Typer(help="Authorization token management.")
 app.add_typer(sessions_app, name="sessions")
 app.add_typer(db_app,       name="db")
+app.add_typer(auth_app,     name="auth")
 
 err = Console(stderr=True)
 
@@ -397,6 +399,69 @@ def db_init() -> None:
         console.print(f"[green]Database ready:[/green] {settings.db_path}")
 
     asyncio.run(_run())
+
+
+# ---------------------------------------------------------------------------
+# artasf auth sign
+# ---------------------------------------------------------------------------
+
+@auth_app.command("sign")
+def auth_sign(
+    target_network: Optional[str] = typer.Option(
+        None, "--target-network", "-t",
+        help="CIDR or IP to authorise (defaults to TARGET_NETWORK in .env).",
+    ),
+    engagement: Optional[str] = typer.Option(
+        None, "--engagement", "-n",
+        help="Engagement name (defaults to ENGAGEMENT_NAME in .env).",
+    ),
+    authorized_by: str = typer.Option(
+        ..., "--authorized-by", "-a",
+        help="Name or email of the person authorising the engagement.",
+    ),
+    expires_in: str = typer.Option(
+        "24h", "--expires-in", "-e",
+        help="Token lifetime, e.g. 8h, 48h, 168h (default: 24h).",
+    ),
+    export: bool = typer.Option(
+        True, "--export/--no-export",
+        help="Print the ready-to-use export command (default: on).",
+    ),
+) -> None:
+    """Generate a signed ARTASF_AUTH_TOKEN for the current engagement."""
+    from artasf.core.authorization import _sign_token
+
+    net  = target_network or settings.target_network
+    name = engagement or settings.engagement_name
+
+    hours_str = expires_in.rstrip("hH")
+    try:
+        hours = float(hours_str)
+    except ValueError:
+        err.print(f"[red]Invalid --expires-in value:[/red] {expires_in!r}  (use e.g. 24h, 8h)")
+        raise typer.Exit(1)
+
+    token_json = _sign_token(
+        engagement=name,
+        target_network=net,
+        authorized_by=authorized_by,
+        expires_in_hours=hours,
+    )
+
+    console.print("\n[bold green]Authorization token generated successfully.[/bold green]\n")
+    console.print(f"  Engagement : [cyan]{name}[/cyan]")
+    console.print(f"  Target     : [cyan]{net}[/cyan]")
+    console.print(f"  Authorised : [cyan]{authorized_by}[/cyan]")
+    console.print(f"  Expires in : [cyan]{expires_in}[/cyan]\n")
+
+    if export:
+        # Collapse to single-line JSON for the env var
+        import json as _json
+        one_line = _json.dumps(_json.loads(token_json), separators=(",", ":"))
+        console.print("[bold]Run this to activate the token in your shell:[/bold]\n")
+        console.print(f"  [yellow]export ARTASF_AUTH_TOKEN='{one_line}'[/yellow]\n")
+    else:
+        console.print(token_json)
 
 
 # ---------------------------------------------------------------------------

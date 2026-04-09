@@ -83,7 +83,10 @@ class AuthorizationGate:
         if not raw:
             raise AuthorizationError(
                 "No ARTASF_AUTH_TOKEN found in environment.\n"
-                "Generate one with: python -m artasf.core.authorization sign ...\n"
+                f"Generate one with:\n"
+                f"  artasf auth sign --target-network \"{target_network}\" "
+                f"--engagement \"{engagement_name}\" --authorized-by \"<your-name>\"\n"
+                "Then copy the printed export command into your shell and re-run.\n"
                 "This tool will not run against a target without explicit authorization."
             )
 
