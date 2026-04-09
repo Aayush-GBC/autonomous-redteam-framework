@@ -56,6 +56,8 @@ class Orchestrator:
         self._vuln_repo: VulnRepository | None = None
         self._loot_repo: LootRepository | None = None
         self._audit: AuditLog | None = None
+        # Set to True by the CLI preflight path when targets are already loaded
+        self._targets_preloaded: bool = False
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -188,17 +190,61 @@ class Orchestrator:
         self.session.phase = WorkflowPhase.RECON
         self._check_abort()
 
+        # ── Preflight path: CLI already scanned and enriched targets ──────
+        # When the CLI preflight ran (firewall detection / evasion loop) it
+        # populated session.targets and set _targets_preloaded.  Skip nmap
+        # here to avoid a redundant scan.
+        if self._targets_preloaded and self.session.targets:
+            logger.info(
+                "Recon: using {} pre-loaded target(s) from preflight scan",
+                len(self.session.targets),
+            )
+            if settings.firewall_evasion:
+                if self._audit:
+                    try:
+                        self._audit.record(
+                            "EVASION_ACTIVE",
+                            engagement=self.session.name,
+                            target_network=self.session.target_network,
+                            note="Preflight evasion scan results accepted by operator",
+                        )
+                    except Exception as exc:
+                        logger.warning("Audit EVASION_ACTIVE record failed: {}", exc)
+                logger.warning(
+                    "[EVASION] Engagement '{}' used firewall/WAF evasion techniques "
+                    "against {} — ensure written authorisation covers this.",
+                    self.session.name, self.session.target_network,
+                )
+            await self._persist()
+            return
+
+        # ── Normal path: run nmap ─────────────────────────────────────────
         logger.info("Starting recon on {}", settings.target_network)
 
-        # Lazy import so recon module can be tested independently
         from artasf.recon.nmap_runner import NmapRunner
         from artasf.recon.nmap_parser import parse_nmap_xml
         from artasf.recon.http_enrich import enrich_http_ports
         from artasf.recon.dns_enum import enumerate_dns
 
-        runner = NmapRunner(settings.target_network, flags=settings.nmap_flags)
-        xml_path = await runner.run()
-        targets = parse_nmap_xml(xml_path)
+        if settings.firewall_evasion:
+            logger.warning(
+                "[EVASION] Engagement '{}' — recon running with firewall/WAF evasion flags.",
+                self.session.name,
+            )
+            if self._audit:
+                try:
+                    self._audit.record(
+                        "EVASION_ACTIVE",
+                        engagement=self.session.name,
+                        target_network=self.session.target_network,
+                        note="Orchestrator recon phase using evasion flags",
+                    )
+                except Exception as exc:
+                    logger.warning("Audit EVASION_ACTIVE record failed: {}", exc)
+
+        runner   = NmapRunner(settings.target_network, flags=settings.nmap_flags)
+        xml_path = await runner.run(firewall_evasion=settings.firewall_evasion)
+        targets  = parse_nmap_xml(xml_path)
 
         # Fallback: if nmap found nothing and target is a specific IP, probe
         # port 80 directly and add a minimal host entry so the pipeline continues

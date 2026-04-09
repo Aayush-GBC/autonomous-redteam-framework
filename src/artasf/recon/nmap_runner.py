@@ -19,6 +19,21 @@ from loguru import logger
 from artasf.core.config import settings
 from artasf.core.exceptions import NmapError
 
+# Extra flags appended when firewall/WAF evasion is requested.
+# -f          — fragment IP packets (8-byte fragments)
+# --mtu 16    — set custom MTU so each fragment carries only 16 bytes
+# --data-length 25 — pad each packet with 25 random bytes to defeat DPI
+# --randomize-hosts — scan hosts in random order to avoid rate-limit triggers
+_EVASION_FLAGS = "-f --mtu 16 --data-length 25 --randomize-hosts"
+
+# Requires raw-socket access — warn when not running as root/admin
+_EVASION_ROOT_NOTE = (
+    "Fragmentation (-f/--mtu) requires raw-socket access. "
+    "On Linux run as root; on Windows run as Administrator. "
+    "If nmap errors with 'requires root privileges', drop --mtu/--data-length "
+    "or add -sT (TCP connect scan) as a fallback."
+)
+
 
 class NmapRunner:
     """
@@ -41,9 +56,15 @@ class NmapRunner:
         self.flags   = flags or settings.nmap_flags
         self.out_dir = out_dir or (settings.artifacts_dir / "scans")
 
-    async def run(self) -> Path:
+    async def run(self, firewall_evasion: bool = False) -> Path:
         """
         Run nmap and return the path to the resulting XML file.
+
+        Args:
+            firewall_evasion: When True, append packet-fragmentation and
+                host-randomisation flags to defeat simple firewalls and WAFs.
+                Only enable when your written authorisation explicitly permits
+                evasion techniques against the target.
 
         Raises:
             NmapError: if nmap is not on PATH or exits non-zero.
@@ -58,7 +79,22 @@ class NmapRunner:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         xml_path  = self.out_dir / f"scan_{timestamp}.xml"
 
-        cmd = ["nmap"] + self.flags.split() + ["-oX", str(xml_path), self.target]
+        effective_flags = self.flags
+        if firewall_evasion:
+            effective_flags = f"{self.flags} {_EVASION_FLAGS}"
+            logger.warning(
+                "[EVASION] Firewall/WAF evasion mode active — appending: {}",
+                _EVASION_FLAGS,
+            )
+            logger.warning(
+                "[EVASION] This scan uses packet fragmentation against {}. "
+                "Ensure your written engagement authorisation explicitly permits "
+                "evasion techniques before proceeding.",
+                self.target,
+            )
+            logger.debug("[EVASION] Note: {}", _EVASION_ROOT_NOTE)
+
+        cmd = ["nmap"] + effective_flags.split() + ["-oX", str(xml_path), self.target]
         logger.info("Running: {}", " ".join(cmd))
 
         proc = await asyncio.create_subprocess_exec(

@@ -16,6 +16,12 @@ from loguru import logger
 from artasf.core.exceptions import NmapError
 from artasf.core.models import Port, PortState, Target
 
+# Service names nmap reports when a TCP proxy/wrapper intercepts the connection
+_TCPWRAP_NAMES = {"tcpwrapped", "tcpwrap"}
+
+# Number of filtered ports that triggers a "firewall likely" determination
+_FILTER_THRESHOLD = 3
+
 
 def parse_nmap_xml(xml_path: Path) -> list[Target]:
     """
@@ -57,6 +63,70 @@ def parse_nmap_xml(xml_path: Path) -> list[Target]:
 
     logger.info("Parsed {} live host(s) from {}", len(targets), xml_path.name)
     return targets
+
+
+def detect_filtered_ports(targets: list[Target]) -> dict:
+    """
+    Analyse parsed scan results for firewall / WAF / TCP-wrapper indicators.
+
+    Args:
+        targets: List of Target objects from ``parse_nmap_xml``.
+
+    Returns a dict with three keys:
+
+        ``per_target``
+            Mapping of ``{ip: {"open": int, "filtered": int, "tcpwrapped": int}}``.
+
+        ``totals``
+            Aggregate ``{"open": int, "filtered": int, "tcpwrapped": int}`` across
+            all targets.
+
+        ``firewall_likely``
+            ``True`` when the aggregate filtered count exceeds
+            ``_FILTER_THRESHOLD`` OR when at least one tcpwrapped port exists.
+            Either condition indicates a stateful packet filter or application
+            proxy in the path.
+    """
+    per_target: dict[str, dict[str, int]] = {}
+    totals = {"open": 0, "filtered": 0, "tcpwrapped": 0}
+
+    for target in targets:
+        counts = {"open": 0, "filtered": 0, "tcpwrapped": 0}
+        for port in target.ports:
+            if port.state == PortState.OPEN:
+                svc = (port.service or "").lower().strip()
+                if svc in _TCPWRAP_NAMES:
+                    counts["tcpwrapped"] += 1
+                else:
+                    counts["open"] += 1
+            elif port.state == PortState.FILTERED:
+                counts["filtered"] += 1
+        per_target[target.ip] = counts
+        for k in totals:
+            totals[k] += counts[k]
+
+    firewall_likely = (
+        totals["filtered"] > _FILTER_THRESHOLD
+        or totals["tcpwrapped"] > 0
+    )
+
+    if firewall_likely:
+        logger.warning(
+            "Firewall/filter indicators detected — "
+            "filtered={} tcpwrapped={} open={} across {} host(s)",
+            totals["filtered"], totals["tcpwrapped"], totals["open"], len(targets),
+        )
+    else:
+        logger.debug(
+            "No firewall indicators — filtered={} tcpwrapped={} open={}",
+            totals["filtered"], totals["tcpwrapped"], totals["open"],
+        )
+
+    return {
+        "per_target": per_target,
+        "totals": totals,
+        "firewall_likely": firewall_likely,
+    }
 
 
 # ---------------------------------------------------------------------------

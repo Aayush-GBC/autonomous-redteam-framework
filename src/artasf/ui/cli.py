@@ -73,6 +73,15 @@ def run(
         help="Directory for reports and artifacts. Defaults to ARTIFACTS_DIR.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable DEBUG logging."),
+    bypass_firewall: bool = typer.Option(
+        False, "--bypass-firewall",
+        help=(
+            "Skip the interactive firewall-evasion prompt and immediately "
+            "enable evasion techniques (packet fragmentation, host randomisation). "
+            "Only use when your written engagement authorisation explicitly permits "
+            "evasion against the target."
+        ),
+    ),
 ) -> None:
     """Run the full autonomous engagement pipeline."""
     _apply_overrides(target=target, dry_run=dry_run, name=name, output=output)
@@ -84,12 +93,28 @@ def run(
     print_banner()
     console.print(f"  Target : [cyan]{settings.target_network}[/cyan]")
     console.print(f"  Mode   : [{'yellow' if settings.dry_run else 'green'}]{'DRY RUN' if settings.dry_run else 'LIVE'}[/]")
+    if bypass_firewall:
+        console.print("  Evasion: [yellow]FIREWALL BYPASS ENABLED[/yellow]")
     console.print()
 
     from artasf.core.orchestrator import Orchestrator
 
     async def _run() -> None:
+        # ── Phase 0: preflight recon + firewall detection ──────────────────
+        # We run a quick initial scan before handing off to the orchestrator.
+        # This lets us detect filtered/tcpwrapped ports and offer the user a
+        # chance to re-scan with evasion flags before the full pipeline starts.
+        targets = await _preflight_scan(
+            bypass_firewall=bypass_firewall,
+            engagement_name=settings.engagement_name,
+        )
+
+        # ── Phase 1–N: full pipeline ───────────────────────────────────────
         async with Orchestrator.from_settings() as orch:
+            # Pre-load the targets so the orchestrator skips its own nmap scan
+            if targets is not None:
+                orch.session.targets = targets
+                orch._targets_preloaded = True  # type: ignore[attr-defined]
             _patch_orchestrator(orch)
             session = await orch.run()
 
@@ -428,6 +453,131 @@ def _patch_orchestrator(orch: object) -> None:
     orch._run_planning     = _planning_hook     # type: ignore[attr-defined]
     orch._run_exploiting   = _exploiting_hook   # type: ignore[attr-defined]
     orch._run_post_exploit = _post_hook         # type: ignore[attr-defined]
+
+
+# ---------------------------------------------------------------------------
+# Preflight recon + firewall detection
+# ---------------------------------------------------------------------------
+
+async def _preflight_scan(
+    bypass_firewall: bool,
+    engagement_name: str,
+) -> "list | None":
+    """
+    Run an initial nmap scan, detect firewall indicators, and optionally
+    re-scan with evasion flags.
+
+    Returns the list of Target objects (possibly from the evasion re-scan),
+    or None if the scan fails (orchestrator will fall back to its own recon).
+    """
+    from artasf.recon.nmap_runner import NmapRunner
+    from artasf.recon.nmap_parser import parse_nmap_xml, detect_filtered_ports
+    from artasf.recon.http_enrich import enrich_http_ports
+    from artasf.recon.dns_enum import enumerate_dns
+
+    console.print("[dim]  → Running preflight recon scan…[/dim]")
+
+    try:
+        runner  = NmapRunner(settings.target_network, flags=settings.nmap_flags)
+        xml     = await runner.run(firewall_evasion=False)
+        targets = parse_nmap_xml(xml)
+    except Exception as exc:
+        console.print(f"[yellow]  Preflight scan failed ({exc}) — orchestrator will retry.[/yellow]")
+        return None
+
+    fw = detect_filtered_ports(targets)
+    totals = fw["totals"]
+
+    if fw["firewall_likely"]:
+        # ── Print firewall warning ────────────────────────────────────────
+        console.print(
+            f"\n  [yellow bold]⚠  Firewall / filter indicators detected[/yellow bold]"
+        )
+        console.print(
+            f"     Filtered ports : [yellow]{totals['filtered']}[/yellow]"
+        )
+        console.print(
+            f"     TCPwrapped ports: [yellow]{totals['tcpwrapped']}[/yellow]"
+        )
+        console.print(
+            f"     Open ports     : [green]{totals['open']}[/green]"
+        )
+
+        # Per-host breakdown
+        for ip, counts in fw["per_target"].items():
+            if counts["filtered"] or counts["tcpwrapped"]:
+                console.print(
+                    f"     [dim]{ip}[/dim] — "
+                    f"filtered={counts['filtered']} "
+                    f"tcpwrapped={counts['tcpwrapped']} "
+                    f"open={counts['open']}"
+                )
+
+        # ── Decide whether to use evasion ─────────────────────────────────
+        use_evasion = bypass_firewall
+        if not use_evasion:
+            console.print()
+            use_evasion = typer.confirm(
+                "  Firewall indicators detected. Retry with evasion techniques?\n"
+                "  (Only if your written authorisation explicitly permits evasion)",
+                default=False,
+            )
+
+        if use_evasion:
+            _audit_evasion_start(engagement_name)
+            console.print(
+                "\n  [yellow]  Evasion mode active — re-scanning with "
+                "packet fragmentation and host randomisation.[/yellow]"
+            )
+            try:
+                evasion_runner = NmapRunner(settings.target_network, flags=settings.nmap_flags)
+                evasion_xml    = await evasion_runner.run(firewall_evasion=True)
+                targets        = parse_nmap_xml(evasion_xml)
+                # Mark setting so orchestrator logging / audit know evasion ran
+                settings.firewall_evasion = True  # type: ignore[misc]
+                console.print(
+                    f"  [green]Evasion scan complete — {len(targets)} host(s) found.[/green]\n"
+                )
+            except Exception as exc:
+                console.print(
+                    f"  [red]Evasion scan failed ({exc}) — continuing with initial results.[/red]\n"
+                )
+        else:
+            console.print("  [dim]Continuing with initial scan results.[/dim]\n")
+    else:
+        console.print(
+            f"  [dim]Preflight complete — {len(targets)} host(s), "
+            f"no firewall indicators.[/dim]\n"
+        )
+
+    # Enrich HTTP ports on final target set
+    dns_names = await enumerate_dns(settings.target_network)
+    for t in targets:
+        if t.ip in dns_names:
+            t.hostname = dns_names[t.ip]
+        await enrich_http_ports(t)
+
+    return targets
+
+
+def _audit_evasion_start(engagement_name: str) -> None:
+    """Record an EVASION_START event in the audit log."""
+    from datetime import datetime, timezone
+    from artasf.core.audit import AuditLog
+
+    try:
+        log = AuditLog(settings.artifacts_dir / "logs" / "audit_preflight.log")
+        log.record(
+            "EVASION_START",
+            engagement=engagement_name,
+            target_network=settings.target_network,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            note="Operator confirmed use of firewall/WAF evasion techniques",
+        )
+    except Exception as exc:
+        # Non-fatal — log to stderr but don't block the scan
+        from loguru import logger
+        logger.warning("Could not write EVASION_START audit record: {}", exc)
 
 
 # ---------------------------------------------------------------------------

@@ -63,6 +63,9 @@ class ARTASFSettings(BaseSettings):
     nmap_flags:           str   = Field(default="-sV -sC --open -T4 --script=http-title,banner")
     # Maximum seconds nmap may run before the scan is killed
     nmap_timeout_sec:     int   = Field(default=300)
+    # When True the recon phase appends packet-fragmentation / evasion flags
+    # to nmap.  Requires explicit written authorisation for the engagement.
+    firewall_evasion:     bool  = Field(default=False, description="Enable nmap firewall/WAF evasion flags")
 
     # ------------------------------------------------------------------
     # Paths
