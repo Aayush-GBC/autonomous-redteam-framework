@@ -31,7 +31,7 @@ from artasf.core.models import (
 from artasf.core.workflow import WorkflowStateMachine
 from artasf.storage.db import Database
 from artasf.storage.file_store import FileStore
-from artasf.storage.repos import LootRepository, SessionRepository, VulnRepository
+from artasf.storage.repos import ExploitAttemptRepository, LootRepository, SessionRepository, VulnRepository
 
 if TYPE_CHECKING:
     pass
@@ -54,6 +54,7 @@ class Orchestrator:
         self._file_store: FileStore | None = None
         self._session_repo: SessionRepository | None = None
         self._vuln_repo: VulnRepository | None = None
+        self._attempt_repo: ExploitAttemptRepository | None = None
         self._loot_repo: LootRepository | None = None
         self._audit: AuditLog | None = None
         # Set to True by the CLI preflight path when targets are already loaded
@@ -94,6 +95,7 @@ class Orchestrator:
         await self._db.__aenter__()
         self._session_repo = SessionRepository(self._db)
         self._vuln_repo = VulnRepository(self._db)
+        self._attempt_repo = ExploitAttemptRepository(self._db)
         self._loot_repo = LootRepository(self._db)
         await self._session_repo.save(self.session)
         # Audit log — one file per engagement session
@@ -320,6 +322,8 @@ class Orchestrator:
 
         successes = len(self.session.successful_attempts())
         logger.info("Exploitation complete: {}/{} steps succeeded", successes, len(self.session.plan.steps))
+        if self._attempt_repo is not None and self.session.attempts:
+            await self._attempt_repo.save_all(self.session.id, self.session.attempts)
         await self._persist()
 
     async def _run_post_exploit(self) -> None:
@@ -330,6 +334,7 @@ class Orchestrator:
             self.sm.advance(WorkflowPhase.POST_EXPLOIT)
             self.sm.advance(WorkflowPhase.REPORTING)
             self.session.phase = WorkflowPhase.REPORTING
+            await self._persist()
             return
 
         self.sm.advance(WorkflowPhase.POST_EXPLOIT)

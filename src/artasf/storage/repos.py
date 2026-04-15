@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from artasf.core.models import EngagementSession, LootItem, Vulnerability
+from artasf.core.models import EngagementSession, ExploitAttempt, LootItem, Vulnerability
 
 if TYPE_CHECKING:
     from artasf.storage.db import Database
@@ -147,6 +147,43 @@ class VulnRepository:
             (session_id,),
         )
         return [Vulnerability.model_validate_json(r["json_blob"]) for r in rows]
+
+
+class ExploitAttemptRepository:
+    """Persist and retrieve ExploitAttempt objects."""
+
+    def __init__(self, db: "Database") -> None:
+        self._db = db
+
+    async def save_all(self, session_id: str, attempts: list[ExploitAttempt]) -> None:
+        data = [
+            (
+                a.id,
+                session_id,
+                a.step,
+                a.module,
+                a.status.value,
+                a.started_at.isoformat() if a.started_at else None,
+                a.ended_at.isoformat() if a.ended_at else None,
+                a.model_dump_json(),
+            )
+            for a in attempts
+        ]
+        await self._db.executemany(
+            """
+            INSERT OR REPLACE INTO exploit_attempts
+                (id, session_id, step, module, status, started_at, ended_at, json_blob)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            data,
+        )
+
+    async def load_for_session(self, session_id: str) -> list[ExploitAttempt]:
+        rows = await self._db.fetchall(
+            "SELECT json_blob FROM exploit_attempts WHERE session_id = ? ORDER BY step",
+            (session_id,),
+        )
+        return [ExploitAttempt.model_validate_json(r["json_blob"]) for r in rows]
 
 
 class LootRepository:

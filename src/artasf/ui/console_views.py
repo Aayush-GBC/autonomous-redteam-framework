@@ -7,7 +7,7 @@ presentational — they read from EngagementSession but never mutate it.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import timezone
 
 from rich.console import Console
 from rich.panel import Panel
@@ -18,11 +18,8 @@ from rich import box
 
 from artasf.core.models import (
     EngagementSession,
-    ExploitAttempt,
     ExploitStatus,
-    LootItem,
     Severity,
-    Vulnerability,
     WorkflowPhase,
 )
 

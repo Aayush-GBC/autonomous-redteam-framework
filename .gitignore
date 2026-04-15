@@ -38,3 +38,6 @@ VM attacker/
 
 # Claude AI agent context
 .claude/
+
+# Nested project copy (created by git clone into an existing worktree)
+autonomous-redteam-framework/

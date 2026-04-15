@@ -9,6 +9,8 @@ import pytest
 
 from artasf.core.models import (
     EngagementSession,
+    ExploitAttempt,
+    ExploitStatus,
     LootItem,
     Port,
     PortState,
@@ -18,7 +20,7 @@ from artasf.core.models import (
 )
 from artasf.storage.db import Database
 from artasf.storage.file_store import FileStore
-from artasf.storage.repos import LootRepository, SessionRepository, VulnRepository
+from artasf.storage.repos import ExploitAttemptRepository, LootRepository, SessionRepository, VulnRepository
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +53,18 @@ def sample_vuln(sample_target: Target) -> Vulnerability:
         severity=Severity.HIGH,
         cvss_score=8.5,
         cve="CVE-2021-1234",
+    )
+
+
+@pytest.fixture
+def sample_attempt(sample_session: EngagementSession, sample_target: Target) -> ExploitAttempt:
+    return ExploitAttempt(
+        session_id=sample_session.id,
+        vuln_id="vuln-001",
+        target_id=sample_target.id,
+        step=1,
+        module="custom/sqli",
+        status=ExploitStatus.SUCCESS,
     )
 
 
@@ -245,6 +259,88 @@ def test_vuln_repo_save_all_empty(tmp_db: Path, sample_session: EngagementSessio
             return await repo.load_for_session(sample_session.id)
 
     assert asyncio.run(_run()) == []
+
+
+# ---------------------------------------------------------------------------
+# ExploitAttemptRepository
+# ---------------------------------------------------------------------------
+
+def test_attempt_repo_save_and_load(
+    tmp_db: Path,
+    sample_session: EngagementSession,
+    sample_attempt: ExploitAttempt,
+) -> None:
+    async def _run() -> list[ExploitAttempt]:
+        async with Database(tmp_db) as db:
+            await SessionRepository(db).save(sample_session)
+            repo = ExploitAttemptRepository(db)
+            await repo.save_all(sample_session.id, [sample_attempt])
+            return await repo.load_for_session(sample_session.id)
+
+    loaded = asyncio.run(_run())
+    assert len(loaded) == 1
+    assert loaded[0].module == "custom/sqli"
+    assert loaded[0].status == ExploitStatus.SUCCESS
+    assert loaded[0].step == 1
+
+
+def test_attempt_repo_save_all_empty(tmp_db: Path, sample_session: EngagementSession) -> None:
+    async def _run() -> list[ExploitAttempt]:
+        async with Database(tmp_db) as db:
+            await SessionRepository(db).save(sample_session)
+            repo = ExploitAttemptRepository(db)
+            await repo.save_all(sample_session.id, [])
+            return await repo.load_for_session(sample_session.id)
+
+    assert asyncio.run(_run()) == []
+
+
+def test_attempt_repo_load_ordered_by_step(
+    tmp_db: Path,
+    sample_session: EngagementSession,
+    sample_target: Target,
+) -> None:
+    a1 = ExploitAttempt(
+        session_id=sample_session.id, vuln_id="v1", target_id=sample_target.id,
+        step=2, module="custom/xss", status=ExploitStatus.FAILED,
+    )
+    a2 = ExploitAttempt(
+        session_id=sample_session.id, vuln_id="v2", target_id=sample_target.id,
+        step=1, module="custom/sqli", status=ExploitStatus.SUCCESS,
+    )
+
+    async def _run() -> list[ExploitAttempt]:
+        async with Database(tmp_db) as db:
+            await SessionRepository(db).save(sample_session)
+            repo = ExploitAttemptRepository(db)
+            await repo.save_all(sample_session.id, [a1, a2])
+            return await repo.load_for_session(sample_session.id)
+
+    loaded = asyncio.run(_run())
+    assert len(loaded) == 2
+    assert loaded[0].step == 1
+    assert loaded[1].step == 2
+
+
+def test_attempt_repo_upsert_replaces(
+    tmp_db: Path,
+    sample_session: EngagementSession,
+    sample_attempt: ExploitAttempt,
+) -> None:
+    async def _run() -> ExploitAttempt:
+        async with Database(tmp_db) as db:
+            await SessionRepository(db).save(sample_session)
+            repo = ExploitAttemptRepository(db)
+            await repo.save_all(sample_session.id, [sample_attempt])
+            # Update status and re-save
+            sample_attempt.status = ExploitStatus.FAILED  # type: ignore[misc]
+            await repo.save_all(sample_session.id, [sample_attempt])
+            loaded = await repo.load_for_session(sample_session.id)
+        assert len(loaded) == 1
+        return loaded[0]
+
+    result = asyncio.run(_run())
+    assert result.status == ExploitStatus.FAILED
 
 
 # ---------------------------------------------------------------------------
