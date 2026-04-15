@@ -46,7 +46,7 @@ class ARTASFSettings(BaseSettings):
     # ------------------------------------------------------------------
     target_network: str = Field(
         default="192.168.56.0/24",
-        description="CIDR range to scan (host-only lab network)",
+        description="IP or CIDR range to scan. Overridden at runtime by --target on the CLI.",
     )
     engagement_name: str = Field(default="lab-engagement")
     # Attacker IP used as LHOST for reverse shells

@@ -60,7 +60,7 @@ err = Console(stderr=True)
 def run(
     target: Optional[str] = typer.Option(
         None, "--target", "-t",
-        help="Override target network CIDR (e.g. 192.168.56.0/24). Defaults to TARGET_NETWORK in .env.",
+        help="Target IP or CIDR (e.g. 192.168.1.5 or 10.0.0.0/24). Overrides TARGET_NETWORK in .env.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run",
@@ -84,9 +84,22 @@ def run(
             "evasion against the target."
         ),
     ),
+    authorized_by: str = typer.Option(
+        "operator", "--authorized-by", "-A",
+        help=(
+            "Name / email of the person authorising this engagement. "
+            "When --target is given a fresh auth token is auto-signed with this value "
+            "so you don't need to run 'artasf auth sign' separately."
+        ),
+    ),
+    lhost: Optional[str] = typer.Option(
+        None, "--lhost",
+        help="Attacker IP for reverse-shell callbacks (overrides LHOST in .env).",
+    ),
 ) -> None:
     """Run the full autonomous engagement pipeline."""
-    _apply_overrides(target=target, dry_run=dry_run, name=name, output=output)
+    _apply_overrides(target=target, dry_run=dry_run, name=name, output=output,
+                     authorized_by=authorized_by, lhost=lhost)
     configure_logging(
         log_dir=settings.artifacts_dir / "logs",
         level="DEBUG" if verbose else "INFO",
@@ -138,7 +151,10 @@ def run(
 
 @app.command()
 def scan(
-    target: Optional[str] = typer.Option(None, "--target", "-t"),
+    target: Optional[str] = typer.Option(
+        None, "--target", "-t",
+        help="Target IP or CIDR. Overrides TARGET_NETWORK in .env.",
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
 ) -> None:
     """Recon + vulnerability mapping only (no exploitation)."""
@@ -685,10 +701,12 @@ def _load_session_json(path: Path) -> object:
 # ---------------------------------------------------------------------------
 
 def _apply_overrides(
-    target:  Optional[str]  = None,
-    dry_run: bool           = False,
-    name:    Optional[str]  = None,
-    output:  Optional[Path] = None,
+    target:        Optional[str]  = None,
+    dry_run:       bool           = False,
+    name:          Optional[str]  = None,
+    output:        Optional[Path] = None,
+    authorized_by: str            = "operator",
+    lhost:         Optional[str]  = None,
 ) -> None:
     if target:
         settings.target_network = target       # type: ignore[misc]
@@ -698,6 +716,32 @@ def _apply_overrides(
         settings.engagement_name = name        # type: ignore[misc]
     if output:
         settings.artifacts_dir = output        # type: ignore[misc]
+    if lhost:
+        settings.lhost = lhost                 # type: ignore[misc]
+    # When a target is given explicitly on the CLI, auto-sign a fresh auth token
+    # so the operator doesn't need to run 'artasf auth sign' and export it manually.
+    if target and not settings.dry_run:
+        _auto_sign_token(authorized_by)
+
+
+def _auto_sign_token(authorized_by: str) -> None:
+    """Sign a short-lived token for the current target and inject it into the process env."""
+    import os
+    import json as _json
+    from artasf.core.authorization import _sign_token
+
+    token_json = _sign_token(
+        engagement=settings.engagement_name,
+        target_network=settings.target_network,
+        authorized_by=authorized_by,
+        expires_in_hours=1.0,
+    )
+    one_line = _json.dumps(_json.loads(token_json), separators=(",", ":"))
+    os.environ["ARTASF_AUTH_TOKEN"] = one_line
+    console.print(
+        f"  [dim]Auth token auto-signed for [cyan]{settings.target_network}[/cyan] "
+        f"(authorized_by={authorized_by}, expires=1h)[/dim]"
+    )
 
 
 # ---------------------------------------------------------------------------
